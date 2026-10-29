@@ -1,13 +1,14 @@
 {
   "device": "cpu",
-  "loop_videos": false,
+  "loop_videos": true,
   "realtime_files": true,
   "show_window": true,
   "window_scale": 1.0,
   "ui_fps": 30,
+  "jpeg_quality": 90,
   "display": {
-    "width": 640,
-    "height": 480
+    "width": 960,
+    "height": 540
   },
   "sensors": {
     "ir": {
@@ -17,16 +18,16 @@
       "camera": {
         "latest_only": true
       },
-      "width": 640,
-      "height": 480,
+      "width": 960,
+      "height": 540,
       "hfov_deg": 60,
       "offset": {
         "x_inches": 0.0,
         "y_inches": 0.0,
         "known_target_width_inches": 12.0
       },
-      "model_path": "models/thermal_best.onnx",
-      "imgsz": 480,
+      "model_path": "",
+      "imgsz": [640,320],
       "confidence": 0.4,
       "lens": "rectilinear",
       "group_eps": 55
@@ -39,7 +40,7 @@
         "fourcc": "MJPG",
         "width": 960,
         "height": 540,
-        "fps": 60,
+        "fps": 30,
         "latest_only": true
       },
       "width": 960,
@@ -51,10 +52,7 @@
         "known_target_width_inches": 12.0
       },
       "model_path": "models/rgb_best.onnx",
-      "imgsz": [
-        480,
-        640
-      ],
+      "imgsz": [640,320],
       "confidence": 0.4,
       "group_eps": 250,
       "lens": "rectilinear",
@@ -85,7 +83,7 @@
   "swarm_alert_size": 3,
   "panel_rows": 5,
   "onnx_threads": 2,
-  "secondary_every_n": 3,
+  "secondary_every_n": 2,
   "secondary_full_rate_when_unlocked": true,
   "send_hz": 30,
   "stale_result_ms": 500,

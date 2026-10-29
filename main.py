@@ -1,9 +1,10 @@
 """C-UAV v2: Dual-Sensor Single-Target Tracker Web Interface
 
 Transforms C-UAV into a web application powered by Flask and Flask-SocketIO.
-Supports multi-device remote control and live video streaming.
+Supports multi-device remote control, real-time telemetry, and live video streaming.
 """
 
+import csv
 import json
 import math
 import os
@@ -54,6 +55,39 @@ def log_message(msg, console=True):
     if len(LOG_BUFFER) > MAX_LOG_LINES:
         LOG_BUFFER.pop(0)
     socketio.emit('log_event', {'message': entry})
+
+# ---------------------------------------------------------
+# PERFORMANCE TIMING & CSV LOGGING HELPERS
+# ---------------------------------------------------------
+def init_timing_csv(csv_path):
+    """Initializes the timing log CSV file with headers if it doesn't exist."""
+    if not csv_path:
+        return
+    file_exists = os.path.exists(csv_path)
+    if not file_exists:
+        try:
+            with open(csv_path, mode='w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(["timestamp", "sensor", "seq", "inference_ms", "measured_fps"])
+        except Exception as e:
+            print(f"[LOG] Failed to initialize timing CSV: {e}")
+
+def log_timing_metric(csv_path, sensor_key, seq, inference_ms, current_fps):
+    """Appends an inference timing record to the CSV log."""
+    if not csv_path:
+        return
+    try:
+        with open(csv_path, mode='a', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                sensor_key,
+                seq,
+                f"{inference_ms:.2f}",
+                f"{current_fps:.2f}"
+            ])
+    except Exception:
+        pass  # Prevent file write bottlenecks from affecting worker threads
 
 class Stats:
     def __init__(self, window=100, skip=5):
@@ -555,20 +589,39 @@ class LiveCapture(threading.Thread):
                 return None
             return self.frame, self.t, self.seq
 
+BACKENDS = {"ANY": cv2.CAP_ANY, "V4L2": cv2.CAP_V4L2, "DSHOW": cv2.CAP_DSHOW,
+            "MSMF": cv2.CAP_MSMF, "GSTREAMER": cv2.CAP_GSTREAMER, "FFMPEG": cv2.CAP_FFMPEG}
+
 class OpenCVSource:
+    """Video file, camera index, stream URL or GStreamer pipeline (anything cv2.VideoCapture opens)."""
+
     def __init__(self, key, sc):
         self.key, self.w, self.h = key, sc["width"], sc["height"]
         self.crop, self._crop_checked = sc.get("crop"), False
-        src = sc["source"]
-        self.is_file = os.path.isfile(str(src))
-        self.cap = cv2.VideoCapture(int(src) if str(src).isdigit() else src)
+        self.src_path = sc["source"]
+        self.is_file = os.path.isfile(str(self.src_path))
+        pipeline = isinstance(self.src_path, str) and "!" in self.src_path
+        is_url = isinstance(self.src_path, str) and "://" in self.src_path
+        backend = BACKENDS[sc.get("backend", "GSTREAMER" if pipeline else "ANY").upper()]
+        
+        self.cap = cv2.VideoCapture(int(self.src_path) if str(self.src_path).isdigit() else self.src_path, backend)
         if not self.cap.isOpened():
-            raise SourceError(f"could not open source: {src}")
+            raise SourceError(f"could not open source: {self.src_path}")
         self.iv = 1.0 / (self.cap.get(cv2.CAP_PROP_FPS) or 30)
         self.realtime = cfg.get("realtime_files", True)
         self.idx, self.t0 = 0, time.time()
         self.live, self.last_seq = None, 0
         if not self.is_file:
+            cam = {} if is_url else sc.get("camera", {})
+            if cam.get("fourcc"):
+                self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*cam["fourcc"]))
+            if cam.get("width"):
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, cam["width"])
+            if cam.get("height"):
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, cam["height"])
+            if cam.get("fps"):
+                self.cap.set(cv2.CAP_PROP_FPS, cam["fps"])
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             if sc.get("camera", {}).get("latest_only", True):
                 self.live = LiveCapture(self.cap)
                 self.live.start()
@@ -600,13 +653,27 @@ class OpenCVSource:
         return self.proc(fr), time.time()
 
     def _eof(self):
-        if cfg["loop_videos"] and self.is_file:
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            self.idx, self.t0 = 0, time.time()
-            ok, fr = self.cap.read()
-            if ok:
-                self.idx = 1
-                return self.proc(fr), time.time()
+        if cfg.get("loop_videos", False) and self.is_file:
+            try:
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ok, fr = self.cap.read()
+                if ok:
+                    self.idx = 1
+                    self.t0 = time.time()
+                    return self.proc(fr), self.t0
+            except Exception:
+                pass
+            # Fallback: completely re-open file capture if pointer reset fails
+            try:
+                self.cap.release()
+                self.cap = cv2.VideoCapture(self.src_path)
+                ok, fr = self.cap.read()
+                if ok:
+                    self.idx = 1
+                    self.t0 = time.time()
+                    return self.proc(fr), self.t0
+            except Exception as e:
+                log_message(f"[CAM] Failed to loop video {self.key}: {e}")
         return None
 
     def release(self):
@@ -630,6 +697,9 @@ def infer(model, imgsz, frame, conf):
     return model.track(frame, conf=conf, persist=True, tracker="bytetrack.yaml",
                        imgsz=imgsz, verbose=False, device=DEVICE)[0].boxes
 
+# ---------------------------------------------------------
+# OPTIMIZED SENSOR WORKER WITH TIMING & CSV LOGGING
+# ---------------------------------------------------------
 class SensorWorker(threading.Thread):
     def __init__(self, key, source, model, imgsz, state, trackers):
         super().__init__(name=f"{key}-worker", daemon=True)
@@ -644,6 +714,11 @@ class SensorWorker(threading.Thread):
         self.eof, self.error = False, None
         self.last_pub = time.time()
         self.peers = {}
+        
+        # FPS and timing tracking
+        self.fps_counter = 0
+        self.last_fps_time = time.time()
+        self.current_fps = 0.0
 
     def _should_infer(self):
         n = cfg.get("secondary_every_n", 1)
@@ -657,25 +732,58 @@ class SensorWorker(threading.Thread):
         return self.read_count % n == 0
 
     def run(self):
+        timing_csv_path = cfg.get("timing_csv", "timing_log.csv")
+        init_timing_csv(timing_csv_path)
+
         try:
             while not self.stop_flag.is_set():
                 item = self.source.read()
                 if item is None:
+                    if getattr(self.source, "is_file", False) and cfg.get("loop_videos", False):
+                        time.sleep(0.01)
+                        continue
                     break
+                
                 fr, t_cap = item
                 self.read_count += 1
+                
                 with self.lock:
                     self.frame = fr
-                if not self._should_infer():
-                    continue
-                boxes = infer(self.model, self.imgsz, fr, self.conf)
+
+                # Calculate live measured FPS
+                now = time.time()
+                self.fps_counter += 1
+                if now - self.last_fps_time >= 1.0:
+                    self.current_fps = self.fps_counter / (now - self.last_fps_time)
+                    self.fps_counter = 0
+                    self.last_fps_time = now
+
+                # Run model inference if loaded and enabled
+                inf_ms = 0.0
+                boxes = []
+                if self.model is not None and cfg.get("device") != "none":
+                    if self._should_infer():
+                        t_inf_start = time.time()
+                        boxes = infer(self.model, self.imgsz, fr, self.conf)
+                        inf_ms = (time.time() - t_inf_start) * 1000.0
+                
                 with self.lock:
                     self.seq += 1
                     self.last_pub = time.time()
-                    self.result = dict(boxes=boxes, t_cap=t_cap,
-                                       ms=(time.time() - t_cap) * 1000, seq=self.seq)
+                    self.result = {
+                        "boxes": boxes,
+                        "t_cap": t_cap,
+                        "ms": inf_ms,
+                        "seq": self.seq,
+                        "fps": self.current_fps
+                    }
+
+                # Log to timing_log.csv
+                log_timing_metric(timing_csv_path, self.key, self.seq, inf_ms, self.current_fps)
+
         except Exception as e:
             self.error = e
+            log_message(f"[WORKER ERROR] Sensor {self.key}: {e}")
         finally:
             self.eof = True
 
@@ -736,7 +844,8 @@ APP_STATE = {
     "loaded": cfg.get("start_loaded", False),
     "reloading": False,
     "reload_until": 0.0,
-    "reload_sent_at": 0.0, "fired_at": -1e9,
+    "reload_sent_at": 0.0, 
+    "fired_at": -1e9,
     "esp_status": None,
     "ammo_src": "timer",
     "shots": 0,
@@ -744,17 +853,29 @@ APP_STATE = {
 
 trackers = {k: StreamTracker(k) for k in KEYS}
 
-# Generator for MJPEG Web Video Streaming
+# Generator for MJPEG Web Video Streaming with "SENSOR MISSING" Fallback
 def generate_camera_stream(sensor_key):
     while True:
+        fr = None
         if sensor_key in workers and workers[sensor_key].is_alive():
             fr = workers[sensor_key].get_frame()
             if fr is not None:
                 fr = render_overlay(fr, trackers[sensor_key])
-                ret, jpeg = cv2.imencode('.jpg', fr)
-                if ret:
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
+
+        if fr is None:
+            fr = np.zeros((480, 640, 3), dtype=np.uint8)
+            cv2.rectangle(fr, (20, 20), (620, 460), (30, 40, 50), 2)
+            cv2.putText(fr, f"SENSOR {sensor_key.upper()} MISSING", (110, 220),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 230), 2, cv2.LINE_AA)
+            cv2.putText(fr, "STATUS: NO SOURCE / DISABLED", (135, 260),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (150, 150, 150), 1, cv2.LINE_AA)
+
+        quality = int(cfg.get("jpeg_quality", 85))
+        ret, jpeg = cv2.imencode('.jpg', fr, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+        if ret:
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
+        
         time.sleep(0.033)
 
 @app.route('/')
@@ -795,6 +916,35 @@ def handle_control_action(data):
     
     emit_telemetry()
 
+@socketio.on('tap_target')
+def handle_tap_target(data):
+    sensor_key = data.get('sensor')
+    x_norm = data.get('x')
+    y_norm = data.get('y')
+    if sensor_key in trackers:
+        tr = trackers[sensor_key]
+        target_det = None
+        min_dist = float('inf')
+        for d in tr.dets:
+            x1, y1, x2, y2 = d["box"]
+            px = x_norm * tr.w
+            py = y_norm * tr.h
+            if x1 <= px <= x2 and y1 <= py <= y2:
+                target_det = d
+                break
+            dist = math.hypot(d["cx"] - px, d["cy"] - py)
+            if dist < min_dist:
+                min_dist = dist
+                target_det = d
+        
+        if target_det:
+            tr.manual_lock(target_det)
+            APP_STATE["aim_sensor"] = sensor_key
+            log_message(f"[UI] Tap Locked Target ID T{target_det['tid']} on {sensor_key.upper()}")
+        else:
+            log_message(f"[UI] Tap target missed on {sensor_key.upper()}")
+    emit_telemetry()
+
 def emit_telemetry():
     now = time.time()
     socketio.emit('telemetry_update', {
@@ -811,6 +961,10 @@ def tracking_loop():
     tag = " [sent to ESP32]" if link.ser else " [DRY RUN]"
     last_send = last_fire_time = last_reload_time = 0.0
     send_dt = 1.0 / cfg.get("send_hz", 30)
+
+    for k in KEYS:
+        if k in workers:
+            workers[k].peers = workers
 
     while True:
         now = time.time()
