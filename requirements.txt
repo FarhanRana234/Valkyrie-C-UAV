@@ -1,0 +1,9 @@
+# Runtime (Raspberry Pi 64-bit OS / mini PC, CPU + ONNX)
+ultralytics>=8.3.0        # YOLO11 + ByteTrack. Pulls in torch; on a Pi use the CPU wheel
+onnxruntime>=1.18         # runs the exported .onnx models
+lapx>=0.5.2               # ByteTrack matching (drop-in for 'lap')
+numpy>=1.24
+opencv-python>=4.8        # use opencv-python-headless instead on a Pi without a display
+pyserial>=3.5             # only used when esp32.enabled is true
+flask
+flask-socketio

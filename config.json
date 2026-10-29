@@ -1,0 +1,116 @@
+{
+  "device": "cpu",
+  "loop_videos": false,
+  "realtime_files": true,
+  "show_window": true,
+  "window_scale": 1.0,
+  "ui_fps": 30,
+  "display": {
+    "width": 640,
+    "height": 480
+  },
+  "sensors": {
+    "ir": {
+      "title": "SENSOR 01: IR",
+      "type": "opencv",
+      "source": "",
+      "camera": {
+        "latest_only": true
+      },
+      "width": 640,
+      "height": 480,
+      "hfov_deg": 60,
+      "offset": {
+        "x_inches": 0.0,
+        "y_inches": 0.0,
+        "known_target_width_inches": 12.0
+      },
+      "model_path": "models/thermal_best.onnx",
+      "imgsz": 480,
+      "confidence": 0.4,
+      "lens": "rectilinear",
+      "group_eps": 55
+    },
+    "rgb": {
+      "title": "SENSOR 02: OPTICAL RGB",
+      "type": "opencv",
+      "source": "RGB_videos/test1.mp4",
+      "camera": {
+        "fourcc": "MJPG",
+        "width": 960,
+        "height": 540,
+        "fps": 60,
+        "latest_only": true
+      },
+      "width": 960,
+      "height": 540,
+      "hfov_deg": 60,
+      "offset": {
+        "x_inches": 0.0,
+        "y_inches": 0.0,
+        "known_target_width_inches": 12.0
+      },
+      "model_path": "models/rgb_best.onnx",
+      "imgsz": [
+        480,
+        640
+      ],
+      "confidence": 0.4,
+      "group_eps": 250,
+      "lens": "rectilinear",
+      "_note": "Test videos here. For the real OV2710 fisheye camera use lens \"fisheye\" and see config.cameras.example.json."
+    }
+  },
+  "min_box_width": 12,
+  "min_box_height": 12,
+  "min_aspect_ratio": 0.25,
+  "max_aspect_ratio": 4.0,
+  "static_gate_enabled": true,
+  "static_gate_frames": 15,
+  "static_gate_px": 8.0,
+  "max_coast_frames": 15,
+  "kalman_accel_var": 4.0,
+  "kalman_meas_sigma": 4.0,
+  "gate_px": 80,
+  "lead_frames": 0,
+  "switch_margin": 0.25,
+  "switch_hold_frames": 5,
+  "priority_size_ref": 0.1,
+  "priority_weights": {
+    "size": 0.35,
+    "center": 0.25,
+    "conf": 0.25,
+    "age": 0.15
+  },
+  "swarm_alert_size": 3,
+  "panel_rows": 5,
+  "onnx_threads": 2,
+  "secondary_every_n": 3,
+  "secondary_full_rate_when_unlocked": true,
+  "send_hz": 30,
+  "stale_result_ms": 500,
+  "timing_csv": "timing_log.csv",
+  "aim_sensor": "rgb",
+  "invert_tilt": false,
+  "require_arm": true,
+  "auto_shoot_enabled": false,
+  "auto_shoot_confidence": 0.6,
+  "auto_shoot_min_age": 15,
+  "auto_shoot_max_error_deg": 2.0,
+  "fire_cooldown": 2.0,
+  "esp32": {
+    "enabled": false,
+    "port": "/dev/ttyUSB0",
+    "baud": 921600,
+    "status_wait_s": 2.0,
+    "status_timeout_s": 1.0
+  },
+  "auto_reload_enabled": true,
+  "auto_reload_delay_s": 0.5,
+  "reload_min_interval_s": 1.0,
+  "reload_timeout_s": 3.0,
+  "start_loaded": true,
+  "ammo_source": "auto",
+  "sensor_settle_s": 0.6,
+  "reload_grace_s": 0.5
+}
