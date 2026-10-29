@@ -4,8 +4,6 @@ A real-time dual-sensor automated counter-UAV (C-UAV) tracking and defense turre
 
 ## Quick Start
 ```bash
-pip install -r requirements-export.txt     # export YOLO PyTorch models to ONNX
-python export_models.py                    # generates .onnx model binaries
 pip install -r requirements.txt            # install web app dependencies
 python main.py                             # launches server on http://<your-ip>:5000
 ```
