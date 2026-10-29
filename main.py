@@ -3,7 +3,7 @@
 Transforms C-UAV into a web application powered by Flask and Flask-SocketIO.
 Supports multi-device remote control, real-time telemetry, and live video streaming.
 """
-
+import torch
 import csv
 import json
 import math
@@ -28,7 +28,21 @@ with open(config_path) as f:
 SENS = cfg["sensors"]
 KEYS = ("ir", "rgb")
 DW, DH = cfg["display"]["width"], cfg["display"]["height"]
-DEVICE = cfg.get("device", "cpu")
+
+# --- SMART DEVICE AUTO-DETECTION ---
+requested_device = cfg.get("device", "cpu").lower()
+
+if requested_device.startswith("cuda"):
+    if torch.cuda.is_available():
+        DEVICE = requested_device
+        gpu_name = torch.cuda.get_device_name(0)
+        print(f"[INIT] CUDA GPU detected: {gpu_name}. Running inference on GPU.")
+    else:
+        print("[WARN] CUDA requested in config, but no NVIDIA GPU/CUDA runtime found. Falling back to CPU.")
+        DEVICE = "cpu"
+else:
+    DEVICE = "cpu"
+    print("[INIT] Running inference on CPU as configured.")
 
 # Initialize Flask & SocketIO
 app = Flask(__name__)
