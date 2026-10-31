@@ -5,10 +5,10 @@
   "show_window": true,
   "window_scale": 1.0,
   "ui_fps": 30,
-  "jpeg_quality": 90,
+  "jpeg_quality": 80,
   "display": {
-    "width": 960,
-    "height": 540
+    "width": 480,
+    "height": 360
   },
   "sensors": {
     "ir": {
@@ -18,8 +18,8 @@
       "camera": {
         "latest_only": true
       },
-      "width": 960,
-      "height": 540,
+      "width": 480,
+      "height": 360,
       "hfov_deg": 60,
       "offset": {
         "x_inches": 0.0,
@@ -35,7 +35,7 @@
     "rgb": {
       "title": "SENSOR 02: OPTICAL RGB",
       "type": "opencv",
-      "source": "RGB_videos/test1.mp4",
+      "source": "RGB_videos/test2.mp4",
       "camera": {
         "fourcc": "MJPG",
         "width": 960,
@@ -97,9 +97,9 @@
   "auto_shoot_max_error_deg": 2.0,
   "fire_cooldown": 2.0,
   "esp32": {
-    "enabled": false,
-    "port": "/dev/ttyUSB0",
-    "baud": 921600,
+    "enabled": true,
+    "port": "COM3",
+    "baud": 115200,
     "status_wait_s": 2.0,
     "status_timeout_s": 1.0
   },
