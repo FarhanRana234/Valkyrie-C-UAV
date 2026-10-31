@@ -84,9 +84,6 @@ When accessing the web dashboard from a PC or laptop, action buttons display hot
 | `templates/index.html` | Touch-responsive browser command center with PC keyboard shortcuts |
 | `config.json` | Global performance settings, thread allocation, camera FOVs, and tracking thresholds |
 | `WIRING.md` | Hardware pinout specifications, voltage rails, and component wiring guide |
-| `export_models.py` | PyTorch (`.pt`) to ONNX conversion tool |
-| `esp32_sim.py` | Hardware serial simulator for desktop UI testing without physical hardware |
-| `timing_log.csv` | Real-time latency log monitoring frame processing and inference timings |
 
 ---
 
