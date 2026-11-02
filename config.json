@@ -2,6 +2,7 @@
   "device": "cpu",
   "loop_videos": true,
   "realtime_files": true,
+  "web": {"password": "farhan234", "max_failures": 5, "lockout_s": 60, "session_hours": 12},
   "show_window": true,
   "window_scale": 1.0,
   "ui_fps": 30,
