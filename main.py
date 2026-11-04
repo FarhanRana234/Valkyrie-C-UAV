@@ -48,17 +48,6 @@ else:
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'valkyrie_cuav_secret'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
-import hardening
-hardening.install(app, socketio, cfg, log=log_message)
-
-
-class SourceError(Exception):
-    """A configured sensor could not be started."""
-
-def sensor_enabled(key):
-    sc = SENS[key]
-    src = sc.get("source")
-    return bool(sc.get("enabled", True)) and src is not None and str(src).strip() != ""
 
 # Logging Buffer
 LOG_BUFFER = []
@@ -72,6 +61,19 @@ def log_message(msg, console=True):
     if len(LOG_BUFFER) > MAX_LOG_LINES:
         LOG_BUFFER.pop(0)
     socketio.emit('log_event', {'message': entry})
+
+import hardening
+hardening.install(app, socketio, cfg, log=log_message)
+
+
+class SourceError(Exception):
+    """A configured sensor could not be started."""
+
+def sensor_enabled(key):
+    sc = SENS[key]
+    src = sc.get("source")
+    return bool(sc.get("enabled", True)) and src is not None and str(src).strip() != ""
+
 
 # ---------------------------------------------------------
 # PERFORMANCE TIMING & CSV LOGGING HELPERS
